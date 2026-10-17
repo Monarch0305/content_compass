@@ -2,36 +2,40 @@
 
 // ADD LINK screen.
 //
-// Build-step-1 behaviour (fake): you paste a link, we detect the platform and
-// show a pretend preview (title, thumbnail, fake summary). You can add an
-// optional note, then Save. Saving adds it to the in-memory store and returns
-// to the dashboard.
-//
-// LATER (build step 3): the "preview" step will call POST /api/links, which
-// fetches real details from YouTube and a real summary from the LLM. The shape
-// of this screen stays the same; only the data source changes.
+// Paste (or share) a link, confirm a quick preview, optionally add a note and a
+// reminder preset, then Save. On save the server fetches the real title,
+// thumbnail and summary (step 3) and stores the item. When opened via the
+// Android share sheet, the URL arrives as ?url=... and is prefilled + previewed.
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { detectPlatform, extractYouTubeId, platformLabel } from "@/lib/platform";
 import { REMINDER_PRESETS } from "@/lib/reminders";
 import type { SavedItem, ReminderPreset } from "@/lib/types";
 import { PlatformTag } from "@/components/PlatformTag";
 
-export default function AddPage() {
+function AddForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { addItem } = useStore();
 
-  const [url, setUrl] = useState("");
+  const sharedUrl = searchParams.get("url") ?? "";
+  const [url, setUrl] = useState(sharedUrl);
   const [note, setNote] = useState("");
   // Part 2 of the note section: an optional quick-pick reminder (D-020).
   // null means "no custom reminder, just the usual daily nudges".
   const [reminder, setReminder] = useState<ReminderPreset | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  // Once we have a valid URL we build a fake preview to confirm before saving.
+  // A preview (platform + placeholder) shown to confirm before saving.
   const [preview, setPreview] = useState<SavedItem | null>(null);
+
+  // Opened via the share sheet (?url=...): preview it automatically.
+  useEffect(() => {
+    if (sharedUrl) handlePreview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function handlePreview() {
     setError(null);
@@ -56,11 +60,10 @@ export default function AddPage() {
       url: url.trim(),
       platform,
       title: `Saved ${platformLabel(platform)} link`,
-      channel: "Unknown channel",
+      channel: "",
       duration: null,
       thumbnail_url: thumb,
-      summary:
-        "A short summary will appear here once real detail-fetching and the AI summary are wired up.",
+      summary: "The real title and summary are fetched when you save.",
       user_note: null,
       custom_reminder: null,
       status: "unwatched",
@@ -200,5 +203,14 @@ export default function AddPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function AddPage() {
+  // useSearchParams needs a Suspense boundary during prerender.
+  return (
+    <Suspense fallback={null}>
+      <AddForm />
+    </Suspense>
   );
 }

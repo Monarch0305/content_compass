@@ -246,4 +246,20 @@ Every meaningful decision for Content Compass goes here, **with the reason**. Th
 - **Alternatives considered:** A larger model (rejected: unnecessary cost for 2-3 lines); blocking saves until a key exists (rejected: breaks the core loop).
 - **Consequences / follow-ups:** Pinned model `claude-haiku-5-5`, SDK `@anthropic-ai/sdk@0.70.1`. Summary is generated synchronously on save (fine at personal volume); revisit if saving feels slow.
 
-<!-- Add new entries below this line. Next ID: D-026 -->
+### D-026: PWA + Web Push for reminders (service worker, VAPID, pg_cron)
+- **Date:** 2026-10-17
+- **Decided by:** Both (approach per D-007/D-008; Claude implemented)
+- **Status:** Accepted
+- **Decision:** Reminders use Web Push: a service worker (`public/sw.js`) shows notifications; the browser subscribes with a VAPID keypair and the subscription is stored in `push_subscriptions`; a secret-protected endpoint (`POST /api/cron/reminders`) sends the two daily nudges, triggered by Supabase `pg_cron` (`supabase/reminders_cron.sql`, 09:00/20:00 IST = 03:30/14:30 UTC). The app is an installable PWA (`manifest.webmanifest`) with an Android **share target** (`/share` → `/add?url=`).
+- **Reason:** Delivers notifications when the app is closed with one codebase and no app store (D-007), and keeps scheduling inside Supabase (D-008). The share target makes saving one tap from YouTube/Instagram (project.md scope).
+- **Consequences / follow-ups:** The cron endpoint needs `SUPABASE_SERVICE_ROLE_KEY` (server-only, to read across users), the `VAPID_*` keys, and `CRON_SECRET`. **Delivery only works once deployed over HTTPS** with those set and the pg_cron schedule applied — localhost/dev can subscribe but won't be scheduled.
+
+### D-027: Custom reminder presets need a stored due-time (deferred follow-up)
+- **Date:** 2026-10-17
+- **Decided by:** Claude (proposed)
+- **Status:** Provisional
+- **Decision:** Step 4 delivers the **two daily nudges** (the V1 definition-of-done). Firing the per-item presets (Tonight / This weekend / Next week, D-020) at the right moment needs a stored `remind_at` timestamp (computed from the preset + the user's timezone at save time) and a more frequent cron. That's a small, separate increment, not part of step 4.
+- **Reason:** We stored only the preset *key*, not a due time, so "tonight" vs "this weekend" can't be fired precisely yet. The daily nudge already meets the core promise; adding `remind_at` is a focused schema change to do next, through the usual approval + migration flow.
+- **Consequences / follow-ups:** Next increment: add `remind_at timestamptz` to `saved_items`, compute it on save, and have the cron also fire due custom reminders.
+
+<!-- Add new entries below this line. Next ID: D-028 -->

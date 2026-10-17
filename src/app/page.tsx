@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useStore } from "@/lib/store";
 import { VideoCard } from "@/components/VideoCard";
 import { SignOutButton } from "@/components/SignOutButton";
+import { EnableReminders } from "@/components/EnableReminders";
 
 export default function DashboardPage() {
   const { items, loading } = useStore();
@@ -30,7 +31,10 @@ export default function DashboardPage() {
             ? "Nothing waiting. Nice and clear."
             : `${unwatched.length} ${unwatched.length === 1 ? "video" : "videos"} waiting to watch`}
         </p>
-        <SignOutButton />
+        <div className="flex items-center gap-3">
+          <EnableReminders />
+          <SignOutButton />
+        </div>
       </div>
 
       {unwatched.length === 0 && watched.length === 0 ? (

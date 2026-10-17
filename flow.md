@@ -1,140 +1,148 @@
 # flow.md: how the code runs
 
-> **Status: reflects build step 3 (real YouTube details + AI summary).**
-> YouTube details come from oEmbed (keyless) + the Data API (duration, if a key
-> is set); the summary uses Claude Haiku when `ANTHROPIC_API_KEY` is set, else a
-> note/title fallback. Instagram Reel detail-fetching is still placeholder
-> (step 5); PWA share target and reminders are not built yet (step 4). Update
-> this file in the same change whenever a function is added, renamed, moved, or
-> its calls change. A stale `flow.md` is a bug.
+> **Status: reflects build step 4 (PWA install, share-to-save, Web Push reminders).**
+> YouTube details are live (oEmbed + optional Data API) and summaries use Claude
+> Haiku (with a no-key fallback). Instagram Reel detail-fetching is still
+> placeholder (step 5). Reminder *delivery* requires the app deployed over HTTPS
+> with the service-role key set and the pg_cron schedule applied (see
+> `supabase/reminders_cron.sql`). Update this file in the same change whenever a
+> function is added, renamed, moved, or its calls change. A stale `flow.md` is a bug.
 
 ## 1. Entry points
 
 | Entry point | File | Triggered by |
 |---|---|---|
-| Middleware (auth gate + session refresh) | `src/middleware.ts` | Every page request except `/api`, static |
-| Root layout (provides the store) | `src/app/layout.tsx` | Every page load |
-| Login | `src/app/login/page.tsx` | Opening `/login` (or any redirect when signed out) |
-| Home / dashboard | `src/app/page.tsx` | Opening `/` |
-| Add link | `src/app/add/page.tsx` | Opening `/add` (floating + button) |
-| Video detail | `src/app/video/[id]/page.tsx` | Opening `/video/<id>` |
+| Middleware (auth gate + session refresh) | `src/middleware.ts` | Every page request except `/api`, static, `sw.js`, manifest |
+| Root layout (store + service-worker registration) | `src/app/layout.tsx` | Every page load |
+| PWA manifest | `src/app/manifest.ts` | `/manifest.webmanifest` (install + share target) |
+| Service worker | `public/sw.js` | Push messages, notification taps |
+| Login | `src/app/login/page.tsx` | `/login` |
+| Home / dashboard | `src/app/page.tsx` | `/` |
+| Add link | `src/app/add/page.tsx` | `/add` (also `/add?url=` from a share) |
+| Share target | `src/app/share/page.tsx` | `/share?url=…` from the Android share sheet |
+| Video detail | `src/app/video/[id]/page.tsx` | `/video/<id>` |
 | List + create API | `src/app/api/links/route.ts` | `GET`/`POST /api/links` |
 | Update + delete API | `src/app/api/links/[id]/route.ts` | `PATCH`/`DELETE /api/links/<id>` |
-| Share handler | — | **Not built yet** (step 4, PWA share target) |
-| Reminder job | — | **Not built yet** (step 4) |
-
-Data now lives in **Supabase**, read/written through the API routes under the
-logged-in user's session. The browser store (`src/lib/store.tsx`) keeps a local
-copy in sync for a snappy UI.
+| Save push subscription | `src/app/api/push/subscribe/route.ts` | `POST /api/push/subscribe` |
+| Reminder cron | `src/app/api/cron/reminders/route.ts` | `POST /api/cron/reminders` (scheduler) |
 
 ## 2. Execution order per flow
 
 ```
 Flow: Login (email + one-time code, D-016)
 1. signed-out user hits any page -> middleware redirects -> /login   (src/middleware.ts)
-2. type email, tap "Send code"   -> supabase.auth.signInWithOtp()    (src/app/login/page.tsx)
-   -> Supabase emails a 6-digit code
-3. type code, tap "Verify"       -> supabase.auth.verifyOtp()        (src/app/login/page.tsx)
-4. session cookie set            -> router.push("/") + refresh       -> dashboard
+2. type email, "Send code"       -> supabase.auth.signInWithOtp()    (login/page.tsx)
+3. type code, "Verify"           -> supabase.auth.verifyOtp()        (login/page.tsx)
+4. session cookie set            -> router.push("/") + refresh
 ```
 
 ```
-Flow: Open the dashboard
-1. browser loads /                -> middleware confirms session      (src/middleware.ts)
-2. StoreProvider mounts, fetches  -> GET /api/links                   (src/lib/store.tsx)
-3. route checks user, queries     -> supabase.from("saved_items")...  (src/app/api/links/route.ts)
-   (RLS returns only this user's rows)
-4. dashboard renders cards        -> <VideoCard/>                      (src/app/page.tsx)
+Flow: Save a link (paste or share)
+1a. paste on /add, tap Preview, OR
+1b. share from YouTube/Instagram -> /share -> redirect -> /add?url=…  (share/page.tsx)
+2. /add auto-previews the URL    -> detectPlatform()                 (lib/platform.ts)
+3. add optional note + reminder preset, tap Save
+4. store.addItem(input)          -> POST /api/links                  (lib/store.tsx)
+5. route fetches details         -> fetchYouTubeDetails()            (lib/youtube.ts)  [YouTube/Shorts]
+6. route writes summary          -> summarise() (Claude Haiku/fallback)(lib/summary.ts)
+7. route inserts                 -> supabase saved_items.insert()    (api/links/route.ts)
+8. created row prepended locally -> back to dashboard
 ```
 
 ```
-Flow: Save a link
-1. /add: paste URL, Preview       -> detectPlatform(), extractYouTubeId() (src/lib/platform.ts)
-2. add optional note + reminder preset, tap Save
-3. store.addItem(input)           -> POST /api/links                  (src/lib/store.tsx)
-4. route: detect platform         -> fetchYouTubeDetails(url)         (src/lib/youtube.ts)  [YouTube/Shorts]
-5. route: write summary           -> summarise({...})                 (src/lib/summary.ts)
-6. route: insert                  -> supabase ... .insert(...)        (src/app/api/links/route.ts)
-   (unique (user_id,url) -> 409 "already saved")
-7. created row returned, prepended to the local list -> back to dashboard
+Flow: Enable reminders
+1. dashboard "Enable reminders"  -> Notification.requestPermission() (components/EnableReminders.tsx)
+2. subscribe via service worker  -> pushManager.subscribe(VAPID)
+3. POST /api/push/subscribe      -> upsert push_subscriptions + default reminder_settings (api/push/subscribe/route.ts)
 ```
 
 ```
-Flow: Mark watched / delete
-1. /video/<id>: getItem(id) from the local store                     (src/app/video/[id]/page.tsx)
-2a. Mark watched -> store.markWatched(id) -> PATCH /api/links/<id>    (status=watched, sets watched_at)
-2b. Delete       -> store.deleteItem(id)  -> DELETE /api/links/<id>
-3. local list updated -> router.push("/")
+Flow: Send reminders (two daily nudges, D-018)
+1. pg_cron at 03:30 & 14:30 UTC  -> net.http_post -> POST /api/cron/reminders  (supabase/reminders_cron.sql)
+2. endpoint checks Bearer CRON_SECRET, loads VAPID + service-role client       (api/cron/reminders/route.ts)
+3. reads all unwatched items + subscriptions (service role bypasses RLS)
+4. web-push sends one notification per device; dead subs (404/410) deleted
+5. phone shows notification -> tap -> service worker focuses/opens app          (public/sw.js)
+```
 
-Flow: Sign out -> SignOutButton -> supabase.auth.signOut() -> /login  (src/components/SignOutButton.tsx)
+```
+Flow: Mark watched / delete  -> PATCH/DELETE /api/links/<id>   (video/[id]/page.tsx -> store -> API)
+Flow: Sign out               -> supabase.auth.signOut() -> /login (components/SignOutButton.tsx)
 ```
 
 ## 3. Call graph
 
-- `middleware` (`middleware.ts`) -> `supabase.auth.getUser()`; redirects to `/login` or back
-- `StoreProvider` (`store.tsx`) -> `fetch` GET/POST/PATCH/DELETE `/api/links`; exposes `items`, `loading`, `getItem`, `addItem`, `markWatched`, `deleteItem`
-- `LoginPage` (`login/page.tsx`) -> `createClient()` (browser) -> `signInWithOtp()`, `verifyOtp()`
-- `DashboardPage` (`page.tsx`) -> `useStore()`; renders `VideoCard`, `SignOutButton`, `EmptyState`
-- `AddPage` (`add/page.tsx`) -> `useStore().addItem`, `detectPlatform`, `extractYouTubeId`, `platformLabel`, `REMINDER_PRESETS`
-- `VideoDetailPage` (`video/[id]/page.tsx`) -> `useStore()` (`getItem`, `markWatched`, `deleteItem`, `loading`), `reminderLabel`
-- `GET/POST /api/links` (`api/links/route.ts`) -> `createClient()` (server), `auth.getUser()`, `from("saved_items")`; POST also -> `fetchYouTubeDetails()`, `summarise()`
+- `middleware` (`middleware.ts`) -> `supabase.auth.getUser()`; redirects
+- `RootLayout` (`layout.tsx`) -> `StoreProvider`, `ServiceWorkerRegister`, `Header`
+- `ServiceWorkerRegister` -> `navigator.serviceWorker.register("/sw.js")`
+- `DashboardPage` -> `useStore()`; renders `VideoCard`, `EnableReminders`, `SignOutButton`, `EmptyState`
+- `EnableReminders` -> `Notification.requestPermission`, `pushManager.subscribe`, `POST /api/push/subscribe`
+- `AddForm` (`add/page.tsx`) -> `useSearchParams`, `useStore().addItem`, `detectPlatform`, `extractYouTubeId`, `platformLabel`, `REMINDER_PRESETS`
+- `SharePage` (`share/page.tsx`) -> `useSearchParams` -> redirect to `/add?url=`
+- `GET/POST /api/links` -> server `createClient()`, `auth.getUser()`, `saved_items`; POST also `fetchYouTubeDetails()`, `summarise()`
+- `POST /api/push/subscribe` -> server `createClient()`, upsert `push_subscriptions` + `reminder_settings`
+- `POST /api/cron/reminders` -> `createAdminClient()` (service role), `webpush.sendNotification()`
 - `fetchYouTubeDetails` (`youtube.ts`) -> YouTube oEmbed + (if key) Data API
 - `summarise` (`summary.ts`) -> Anthropic `messages.create` (Claude Haiku) or fallback
-- `PATCH/DELETE /api/links/[id]` (`api/links/[id]/route.ts`) -> `createClient()` (server) -> `auth.getUser()`, `from("saved_items")`
 
 ## 4. Data in and out
 
 | Function (file) | Input | Output | Supabase |
 |---|---|---|---|
-| `GET /api/links` | — (session cookie) | `SavedItem[]` | select `saved_items` where `user_id` |
-| `POST /api/links` | `{ url, user_note, custom_reminder }` | created `SavedItem` (201) / 400 / 409 | insert `saved_items` |
-| `PATCH /api/links/[id]` | `{ status?, user_note? }` | updated `SavedItem` | update `saved_items` |
-| `DELETE /api/links/[id]` | — | `{ ok: true }` | delete `saved_items` |
-| `detectPlatform`, `extractYouTubeId`, `platformLabel` (`platform.ts`) | url / platform | platform / id / label | none (pure) |
-| store `addItem/markWatched/deleteItem` (`store.tsx`) | see API | updates local `items` | via the API routes |
-
-RLS on all three tables enforces `auth.uid() = user_id`, so a user can never
-read or change another user's rows — the API's `.eq("user_id", ...)` is a
-belt-and-braces second check.
+| `GET /api/links` | session | `SavedItem[]` | select `saved_items` |
+| `POST /api/links` | `{url, user_note, custom_reminder}` | `SavedItem` / 400 / 409 | insert `saved_items` |
+| `PATCH /api/links/[id]` | `{status?, user_note?}` | `SavedItem` | update `saved_items` |
+| `DELETE /api/links/[id]` | — | `{ok}` | delete `saved_items` |
+| `POST /api/push/subscribe` | PushSubscription JSON | `{ok}` | upsert `push_subscriptions`, `reminder_settings` |
+| `POST /api/cron/reminders` | `Bearer CRON_SECRET` | `{sent, removed, users}` / 401 / 503 | read all `saved_items` + `push_subscriptions` (service role), delete dead subs |
 
 ## 5. External calls
 
 | Service | Where | Notes |
 |---|---|---|
-| Supabase Auth | `login/page.tsx`, `middleware.ts`, both API routes, `SignOutButton` | email OTP, session cookies |
-| Supabase Postgres | both API routes (server client) | `saved_items` CRUD under RLS |
-| YouTube oEmbed | `src/lib/youtube.ts` (POST /api/links) | keyless; title, channel, thumbnail |
-| YouTube Data API | `src/lib/youtube.ts` (POST /api/links) | duration only; needs `YOUTUBE_API_KEY` |
-| LLM (Claude Haiku) | `src/lib/summary.ts` (POST /api/links) | summary; needs `ANTHROPIC_API_KEY`, else fallback |
+| Supabase Auth | login, middleware, API routes, SignOutButton | email OTP, session cookies |
+| Supabase Postgres | API routes (user client); cron (service-role client) | RLS for users; cron bypasses it |
+| YouTube oEmbed | `lib/youtube.ts` (POST /api/links) | keyless; title, channel, thumbnail |
+| YouTube Data API | `lib/youtube.ts` (POST /api/links) | duration only; needs `YOUTUBE_API_KEY` |
+| LLM (Claude Haiku) | `lib/summary.ts` (POST /api/links) | needs `ANTHROPIC_API_KEY`, else fallback |
+| Web Push | `api/cron/reminders` (web-push) + `public/sw.js` | needs VAPID keys + service-role + a schedule |
 | Instagram | — | **Not built yet** (step 5) |
-| Web Push | — | **Not built yet** (step 4) |
 
 ## 6. File map
 
 | File | Job |
 |---|---|
-| `src/middleware.ts` | Auth gate: refresh session, redirect signed-out users to `/login` |
-| `src/app/layout.tsx` | Root layout: metadata, global CSS, header, store provider |
-| `src/app/login/page.tsx` | Email + one-time-code sign-in (D-016) |
-| `src/app/page.tsx` | Dashboard: lists items, add button, sign out, empty state |
-| `src/app/add/page.tsx` | Add-link screen: paste → preview → note + reminder → save |
-| `src/app/video/[id]/page.tsx` | Detail screen: summary, note, reminder, open / watched / delete |
-| `src/app/api/links/route.ts` | `GET` list + `POST` create saved items |
-| `src/app/api/links/[id]/route.ts` | `PATCH` update + `DELETE` one item |
-| `src/components/VideoCard.tsx` | One card in the dashboard list |
-| `src/components/PlatformTag.tsx` | Coloured YouTube/Short/Reel label |
-| `src/components/SignOutButton.tsx` | Signs out, returns to `/login` |
+| `src/middleware.ts` | Auth gate; excludes `/api`, static, `sw.js`, manifest |
+| `src/app/layout.tsx` | Root layout: metadata/manifest/icons, store, SW registration |
+| `src/app/manifest.ts` | PWA manifest incl. share target |
+| `public/sw.js` | Service worker: push + notification click |
+| `src/app/login/page.tsx` | Email one-time-code sign-in (D-016) |
+| `src/app/page.tsx` | Dashboard: list, add, enable-reminders, sign out |
+| `src/app/add/page.tsx` | Add screen (Suspense-wrapped; `?url=` prefill) |
+| `src/app/share/page.tsx` | Share target -> forwards URL to `/add` |
+| `src/app/video/[id]/page.tsx` | Detail: summary, note, reminder, watched/delete |
+| `src/app/api/links/route.ts` | List + create (fetch details + summary) |
+| `src/app/api/links/[id]/route.ts` | Update + delete |
+| `src/app/api/push/subscribe/route.ts` | Store push subscription + default settings |
+| `src/app/api/cron/reminders/route.ts` | Send daily nudges (secret-protected, service role) |
+| `src/components/VideoCard.tsx` | Dashboard card |
+| `src/components/PlatformTag.tsx` | Platform label |
+| `src/components/SignOutButton.tsx` | Sign out |
+| `src/components/EnableReminders.tsx` | Permission + push subscribe UI |
+| `src/components/ServiceWorkerRegister.tsx` | Registers `/sw.js` |
 | `src/lib/types.ts` | `SavedItem`, `Platform`, `ItemStatus`, `ReminderPreset` |
-| `src/lib/platform.ts` | URL utilities: detect platform, extract YouTube id, label |
-| `src/lib/youtube.ts` | YouTube detail-fetching: oEmbed + optional Data API duration |
-| `src/lib/summary.ts` | Claude Haiku summary with note/title fallback |
-| `src/lib/reminders.ts` | Reminder presets + label (D-020) |
-| `src/lib/store.tsx` | Browser data layer: loads from and writes to `/api/links` |
+| `src/lib/platform.ts` | URL utilities |
+| `src/lib/youtube.ts` | YouTube detail-fetching |
+| `src/lib/summary.ts` | Claude Haiku summary + fallback |
+| `src/lib/reminders.ts` | Reminder presets + label |
+| `src/lib/store.tsx` | Browser data layer over `/api/links` |
 | `src/lib/supabase/client.ts` | Supabase browser client |
-| `src/lib/supabase/server.ts` | Supabase server client (cookie-based session) |
-| `src/app/globals.css` | Tailwind import + colour tokens (light theme) |
-| `supabase/migrations/*.sql` | Database schema (applied to the project) |
+| `src/lib/supabase/server.ts` | Supabase server client (cookies) |
+| `src/lib/supabase/admin.ts` | Supabase service-role client (cron only) |
+| `public/icon-*.png`, `icon.svg` | App icons |
+| `supabase/migrations/*.sql` | Database schema |
+| `supabase/reminders_cron.sql` | pg_cron schedule template (run after deploy) |
 
 ---
 
-**Last updated:** 2026-10-17 | **Updated by:** Claude | **Reflects:** build step 3 (real YouTube details via oEmbed + optional Data API; Claude Haiku summary with fallback). Instagram detail-fetching still placeholder (step 5).
+**Last updated:** 2026-10-17 | **Updated by:** Claude | **Reflects:** build step 4 (PWA, share-to-save, Web Push reminders). Reminder delivery activates on deploy (HTTPS + service-role key + pg_cron). Instagram still placeholder (step 5).

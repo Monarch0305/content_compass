@@ -6,15 +6,19 @@ import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import "./globals.css";
 import { StoreProvider } from "@/lib/store";
+import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 
 export const metadata: Metadata = {
   title: "Content Compass",
   description: "Save later. Actually watch instead of forgetting.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, title: "Content Compass" },
+  icons: { icon: "/icon-192.png", apple: "/apple-touch-icon.png" },
 };
 
 // A phone-first app, so lock the width to the device and set the theme colour.
 export const viewport: Viewport = {
-  themeColor: "#0b0b0f",
+  themeColor: "#ffffff",
   width: "device-width",
   initialScale: 1,
 };
@@ -27,6 +31,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-dvh">
+        <ServiceWorkerRegister />
         <StoreProvider>
           {/* The app is designed for a phone, so we cap the content width and
               centre it on larger screens. */}

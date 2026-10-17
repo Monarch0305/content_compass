@@ -2,7 +2,7 @@
 
 > Save later. Actually watch instead of forgetting.
 
-- **Status:** Build steps 1-3 done (three screens; real Supabase data + email-OTP login with RLS; real YouTube details + Claude Haiku summaries). PWA/reminders (step 4) and Instagram (step 5) not yet built.
+- **Status:** Build steps 1-4 done (screens; Supabase data + email-OTP login + RLS; YouTube details + Haiku summaries; PWA install + Android share-to-save + Web Push reminders). Reminder *delivery* activates on deploy. Instagram (step 5) not yet built.
 - **Owner:** Viraj
 - **Last updated:** 2026-10-17
 - **Companion files:** `decisions.md` (why we chose things), `flow.md` (how the code runs, created once code exists)
@@ -223,6 +223,8 @@ Update `flow.md` in the same change whenever a function is added, renamed, moved
 - [ ] Another test account cannot see my items
 
 ## 13. Handoff notes (newest first)
+
+**2026-10-17 (session 5):** Built **step 4** (D-026). PWA manifest (`app/manifest.ts`) with Android **share target**, generated app icons (`public/icon-*.png`), service worker (`public/sw.js`, push + notification click) registered via `components/ServiceWorkerRegister`. **Share-to-save**: `/share` forwards the shared URL to `/add?url=`, which auto-previews. **Push**: "Enable reminders" on the dashboard (`components/EnableReminders`) subscribes and stores to `push_subscriptions` via `POST /api/push/subscribe` (also seeds a default `reminder_settings` row). **Reminders cron**: `POST /api/cron/reminders` (Bearer `CRON_SECRET`, service-role client, `web-push`) sends the two daily nudges; schedule template in `supabase/reminders_cron.sql`. VAPID keys generated into `.env.local`. Build passes; smoke-tested manifest/sw/cron guards. **Custom-preset firing deferred** to a `remind_at` follow-up (D-027). **To make reminders actually fire:** deploy over HTTPS, set `SUPABASE_SERVICE_ROLE_KEY` (+ the VAPID/CRON values) in the host env, and run `supabase/reminders_cron.sql` with the live URL. **Next step:** step 5 — Instagram Reels via public preview tags (D-009), built last. Then the `remind_at` follow-up for custom presets. (Also still pending: the Supabase email-template `{{ .Token }}` edit for login.)
 
 **2026-10-17 (session 4):** Built **step 3**. Added `src/lib/youtube.ts` (real title/channel/thumbnail via keyless oEmbed; duration via YouTube Data API only if `YOUTUBE_API_KEY` set; D-024) and `src/lib/summary.ts` (Claude Haiku `claude-haiku-5-5` summary when `ANTHROPIC_API_KEY` set, else note/title fallback; D-025), both wired into `POST /api/links` to replace the placeholders. Installed `@anthropic-ai/sdk@0.70.1`. Build passes; verified oEmbed returns real data. Keys are optional — the app works without them and improves when added; both are in `.env.local` (empty) and documented in `.env.local.example`. **Next step:** step 4 — PWA (manifest + service worker), Android share-target save, and Web Push reminders (two daily + the custom presets). Needs VAPID keys (generated, no account) and a scheduler (Supabase `pg_cron` per D-008/D-018).
 
