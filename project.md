@@ -2,7 +2,7 @@
 
 > Save later. Actually watch instead of forgetting.
 
-- **Status:** Build steps 1-4 done (screens; Supabase data + email-OTP login + RLS; YouTube details + Haiku summaries; PWA install + Android share-to-save + Web Push reminders). Reminder *delivery* activates on deploy. Instagram (step 5) not yet built.
+- **Status:** All V1 build steps (1-5) coded. Not yet *live*: needs deploy (HTTPS + service-role key + pg_cron schedule) and the Supabase email-template edit; optional `remind_at` follow-up for custom-preset timing (D-027).
 - **Owner:** Viraj
 - **Last updated:** 2026-10-17
 - **Companion files:** `decisions.md` (why we chose things), `flow.md` (how the code runs, created once code exists)
@@ -223,6 +223,8 @@ Update `flow.md` in the same change whenever a function is added, renamed, moved
 - [ ] Another test account cannot see my items
 
 ## 13. Handoff notes (newest first)
+
+**2026-10-17 (session 6):** Built **step 5** (D-028) — `src/lib/instagram.ts` reads public Open Graph tags (og:title/og:image/og:description) for Reels with a crawler user-agent, no login (D-009); wired into `POST /api/links` and the caption feeds the Haiku summary. Graceful fallback to the note. Build passes. **All V1 features are now coded.** Known gap: D-010 (own thumbnail copy) not yet done for Instagram, so reel thumbnails may expire — follow-up. **Remaining to go live is config/deploy only** (Vercel + env incl. SUPABASE_SERVICE_ROLE_KEY, Supabase email template `{{ .Token }}`, run `supabase/reminders_cron.sql`), plus the optional `remind_at` increment for custom-preset timing (D-027).
 
 **2026-10-17 (session 5):** Built **step 4** (D-026). PWA manifest (`app/manifest.ts`) with Android **share target**, generated app icons (`public/icon-*.png`), service worker (`public/sw.js`, push + notification click) registered via `components/ServiceWorkerRegister`. **Share-to-save**: `/share` forwards the shared URL to `/add?url=`, which auto-previews. **Push**: "Enable reminders" on the dashboard (`components/EnableReminders`) subscribes and stores to `push_subscriptions` via `POST /api/push/subscribe` (also seeds a default `reminder_settings` row). **Reminders cron**: `POST /api/cron/reminders` (Bearer `CRON_SECRET`, service-role client, `web-push`) sends the two daily nudges; schedule template in `supabase/reminders_cron.sql`. VAPID keys generated into `.env.local`. Build passes; smoke-tested manifest/sw/cron guards. **Custom-preset firing deferred** to a `remind_at` follow-up (D-027). **To make reminders actually fire:** deploy over HTTPS, set `SUPABASE_SERVICE_ROLE_KEY` (+ the VAPID/CRON values) in the host env, and run `supabase/reminders_cron.sql` with the live URL. **Next step:** step 5 — Instagram Reels via public preview tags (D-009), built last. Then the `remind_at` follow-up for custom presets. (Also still pending: the Supabase email-template `{{ .Token }}` edit for login.)
 

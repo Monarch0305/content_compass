@@ -13,8 +13,9 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { detectPlatform, extractYouTubeId, platformLabel } from "@/lib/platform";
+import { detectPlatform } from "@/lib/platform";
 import { fetchYouTubeDetails } from "@/lib/youtube";
+import { fetchInstagramDetails } from "@/lib/instagram";
 import { summarise } from "@/lib/summary";
 
 export async function GET() {
@@ -68,6 +69,7 @@ export async function POST(request: NextRequest) {
   let channel = "";
   let duration: string | null = null;
   let thumbnail_url: string;
+  let caption: string | null = null;
 
   if (platform === "youtube" || platform === "short") {
     const details = await fetchYouTubeDetails(url);
@@ -76,14 +78,15 @@ export async function POST(request: NextRequest) {
     duration = details.duration;
     thumbnail_url = details.thumbnail_url;
   } else {
-    // Reel: real detail-fetching comes in step 5.
-    const ytId = extractYouTubeId(url);
-    title = `Saved ${platformLabel(platform)}`;
-    thumbnail_url = ytId ? `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg` : "";
+    // Instagram Reel: public preview (Open Graph) tags only (D-009).
+    const details = await fetchInstagramDetails(url);
+    title = details.title;
+    thumbnail_url = details.thumbnail_url;
+    caption = details.caption;
   }
 
-  // AI summary (Claude Haiku when a key is set, else a note/title fallback).
-  const summary = await summarise({ platform, title, channel, note });
+  // AI summary (Claude Haiku when a key is set, else a note/caption/title fallback).
+  const summary = await summarise({ platform, title, channel, note, caption });
 
   const { data, error } = await supabase
     .from("saved_items")

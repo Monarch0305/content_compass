@@ -1,9 +1,9 @@
 # flow.md: how the code runs
 
-> **Status: reflects build step 4 (PWA install, share-to-save, Web Push reminders).**
-> YouTube details are live (oEmbed + optional Data API) and summaries use Claude
-> Haiku (with a no-key fallback). Instagram Reel detail-fetching is still
-> placeholder (step 5). Reminder *delivery* requires the app deployed over HTTPS
+> **Status: reflects build step 5 — all V1 features coded.**
+> YouTube details are live (oEmbed + optional Data API), Instagram Reels read
+> public Open Graph tags (D-009, best-effort), and summaries use Claude Haiku
+> (with a no-key fallback). Reminder *delivery* requires the app deployed over HTTPS
 > with the service-role key set and the pg_cron schedule applied (see
 > `supabase/reminders_cron.sql`). Update this file in the same change whenever a
 > function is added, renamed, moved, or its calls change. A stale `flow.md` is a bug.
@@ -44,6 +44,7 @@ Flow: Save a link (paste or share)
 3. add optional note + reminder preset, tap Save
 4. store.addItem(input)          -> POST /api/links                  (lib/store.tsx)
 5. route fetches details         -> fetchYouTubeDetails()            (lib/youtube.ts)  [YouTube/Shorts]
+                                 -> fetchInstagramDetails()         (lib/instagram.ts) [Reels, public OG tags]
 6. route writes summary          -> summarise() (Claude Haiku/fallback)(lib/summary.ts)
 7. route inserts                 -> supabase saved_items.insert()    (api/links/route.ts)
 8. created row prepended locally -> back to dashboard
@@ -106,7 +107,7 @@ Flow: Sign out               -> supabase.auth.signOut() -> /login (components/Si
 | YouTube Data API | `lib/youtube.ts` (POST /api/links) | duration only; needs `YOUTUBE_API_KEY` |
 | LLM (Claude Haiku) | `lib/summary.ts` (POST /api/links) | needs `ANTHROPIC_API_KEY`, else fallback |
 | Web Push | `api/cron/reminders` (web-push) + `public/sw.js` | needs VAPID keys + service-role + a schedule |
-| Instagram | — | **Not built yet** (step 5) |
+| Instagram (public OG tags) | `src/lib/instagram.ts` (POST /api/links) | reel title/thumbnail/caption; best-effort, no login (D-009) |
 
 ## 6. File map
 
@@ -133,7 +134,8 @@ Flow: Sign out               -> supabase.auth.signOut() -> /login (components/Si
 | `src/lib/types.ts` | `SavedItem`, `Platform`, `ItemStatus`, `ReminderPreset` |
 | `src/lib/platform.ts` | URL utilities |
 | `src/lib/youtube.ts` | YouTube detail-fetching |
-| `src/lib/summary.ts` | Claude Haiku summary + fallback |
+| `src/lib/instagram.ts` | Instagram Reel details via public OG tags (D-009) |
+| `src/lib/summary.ts` | Claude Haiku summary + fallback (uses caption/note) |
 | `src/lib/reminders.ts` | Reminder presets + label |
 | `src/lib/store.tsx` | Browser data layer over `/api/links` |
 | `src/lib/supabase/client.ts` | Supabase browser client |
@@ -145,4 +147,4 @@ Flow: Sign out               -> supabase.auth.signOut() -> /login (components/Si
 
 ---
 
-**Last updated:** 2026-10-17 | **Updated by:** Claude | **Reflects:** build step 4 (PWA, share-to-save, Web Push reminders). Reminder delivery activates on deploy (HTTPS + service-role key + pg_cron). Instagram still placeholder (step 5).
+**Last updated:** 2026-10-17 | **Updated by:** Claude | **Reflects:** build step 5 — all V1 features coded (incl. Instagram Reels via public OG tags). Remaining before it's fully live: deploy (HTTPS + service-role key + pg_cron), the Supabase email-template edit, and the optional `remind_at` follow-up (D-027).

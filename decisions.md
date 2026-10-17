@@ -262,4 +262,12 @@ Every meaningful decision for Content Compass goes here, **with the reason**. Th
 - **Reason:** We stored only the preset *key*, not a due time, so "tonight" vs "this weekend" can't be fired precisely yet. The daily nudge already meets the core promise; adding `remind_at` is a focused schema change to do next, through the usual approval + migration flow.
 - **Consequences / follow-ups:** Next increment: add `remind_at timestamptz` to `saved_items`, compute it on save, and have the cron also fire due custom reminders.
 
-<!-- Add new entries below this line. Next ID: D-028 -->
+### D-028: Instagram Reels via public Open Graph tags (best-effort)
+- **Date:** 2026-10-17
+- **Decided by:** Both (approach per D-009; Claude implemented)
+- **Status:** Accepted
+- **Decision:** `src/lib/instagram.ts` fetches the public reel page with a crawler user-agent and reads `og:title`, `og:image`, and `og:description` (the caption). The caption feeds the summary; if the fetch fails or returns nothing, the item falls back to the user's note (D-005). No login, bots, or private scraping (D-009).
+- **Reason:** Meta has no simple open API for Reels. Public preview tags cover many links with zero setup; graceful fallback keeps saving reliable when they don't.
+- **Consequences / follow-ups:** This is best-effort — some reels won't expose og tags, and Instagram may change the page, so re-verify before any public release (D-009). **D-010 not yet implemented for Instagram:** og:image URLs expire, so reel thumbnails can go stale; copying the image into our own storage is a follow-up.
+
+<!-- Add new entries below this line. Next ID: D-029 -->

@@ -16,6 +16,7 @@ export interface SummariseInput {
   title: string;
   channel: string;
   note: string | null;
+  caption?: string | null; // e.g. an Instagram Reel caption (D-009)
 }
 
 export async function summarise(input: SummariseInput): Promise<string> {
@@ -33,6 +34,7 @@ export async function summarise(input: SummariseInput): Promise<string> {
     `Platform: ${input.platform}`,
     `Title: ${input.title}`,
     input.channel ? `Channel: ${input.channel}` : null,
+    input.caption ? `Caption: ${input.caption}` : null,
     input.note ? `User's note on why they saved it: ${input.note}` : null,
   ]
     .filter(Boolean)
