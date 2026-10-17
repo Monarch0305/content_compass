@@ -26,7 +26,7 @@ select cron.schedule(
         'Authorization', 'Bearer <CRON_SECRET>',
         'Content-Type', 'application/json'
       ),
-      body := '{}'::jsonb
+      body := jsonb_build_object('type', 'daily')
     );
   $$
 );
@@ -42,7 +42,26 @@ select cron.schedule(
         'Authorization', 'Bearer <CRON_SECRET>',
         'Content-Type', 'application/json'
       ),
-      body := '{}'::jsonb
+      body := jsonb_build_object('type', 'daily')
+    );
+  $$
+);
+
+-- Custom per-item reminders (D-029): check every 15 minutes for presets that
+-- have come due (Tonight / This weekend / Next week). The endpoint only sends
+-- items whose remind_at has passed and marks each as reminded, so this is safe
+-- to run often and never double-sends.
+select cron.schedule(
+  'content-compass-reminders-custom',
+  '*/15 * * * *',
+  $$
+    select net.http_post(
+      url := '<APP_URL>/api/cron/reminders',
+      headers := jsonb_build_object(
+        'Authorization', 'Bearer <CRON_SECRET>',
+        'Content-Type', 'application/json'
+      ),
+      body := jsonb_build_object('type', 'custom')
     );
   $$
 );
@@ -50,4 +69,5 @@ select cron.schedule(
 -- To change or remove later:
 --   select cron.unschedule('content-compass-reminders-morning');
 --   select cron.unschedule('content-compass-reminders-evening');
+--   select cron.unschedule('content-compass-reminders-custom');
 --   select * from cron.job;

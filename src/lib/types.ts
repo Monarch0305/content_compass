@@ -37,6 +37,10 @@ export interface SavedItem {
 
   // Optional custom reminder preset, or null for "just the daily nudges" (D-020).
   custom_reminder: ReminderPreset | null;
+  // When the custom reminder should fire (computed from the preset, D-029), and
+  // whether it has been sent. Both null/false when there's no custom reminder.
+  remind_at: string | null;
+  reminded: boolean;
 
   status: ItemStatus;
   created_at: string; // ISO timestamp

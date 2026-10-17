@@ -17,6 +17,8 @@ import { detectPlatform } from "@/lib/platform";
 import { fetchYouTubeDetails } from "@/lib/youtube";
 import { fetchInstagramDetails } from "@/lib/instagram";
 import { summarise } from "@/lib/summary";
+import { computeRemindAt } from "@/lib/reminders";
+import type { ReminderPreset } from "@/lib/types";
 
 export async function GET() {
   const supabase = await createClient();
@@ -88,6 +90,10 @@ export async function POST(request: NextRequest) {
   // AI summary (Claude Haiku when a key is set, else a note/caption/title fallback).
   const summary = await summarise({ platform, title, channel, note, caption });
 
+  // If a custom reminder preset was chosen, compute when it should fire (D-029).
+  const preset: ReminderPreset | null = body?.custom_reminder ?? null;
+  const remind_at = preset ? computeRemindAt(preset) : null;
+
   const { data, error } = await supabase
     .from("saved_items")
     .insert({
@@ -100,7 +106,8 @@ export async function POST(request: NextRequest) {
       thumbnail_url,
       summary,
       user_note: note,
-      custom_reminder: body?.custom_reminder ?? null,
+      custom_reminder: preset,
+      remind_at,
     })
     .select()
     .single();

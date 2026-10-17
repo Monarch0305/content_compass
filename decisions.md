@@ -257,7 +257,7 @@ Every meaningful decision for Content Compass goes here, **with the reason**. Th
 ### D-027: Custom reminder presets need a stored due-time (deferred follow-up)
 - **Date:** 2026-10-17
 - **Decided by:** Claude (proposed)
-- **Status:** Provisional
+- **Status:** Superseded by D-029 (now implemented)
 - **Decision:** Step 4 delivers the **two daily nudges** (the V1 definition-of-done). Firing the per-item presets (Tonight / This weekend / Next week, D-020) at the right moment needs a stored `remind_at` timestamp (computed from the preset + the user's timezone at save time) and a more frequent cron. That's a small, separate increment, not part of step 4.
 - **Reason:** We stored only the preset *key*, not a due time, so "tonight" vs "this weekend" can't be fired precisely yet. The daily nudge already meets the core promise; adding `remind_at` is a focused schema change to do next, through the usual approval + migration flow.
 - **Consequences / follow-ups:** Next increment: add `remind_at timestamptz` to `saved_items`, compute it on save, and have the cron also fire due custom reminders.
@@ -270,4 +270,13 @@ Every meaningful decision for Content Compass goes here, **with the reason**. Th
 - **Reason:** Meta has no simple open API for Reels. Public preview tags cover many links with zero setup; graceful fallback keeps saving reliable when they don't.
 - **Consequences / follow-ups:** This is best-effort — some reels won't expose og tags, and Instagram may change the page, so re-verify before any public release (D-009). **D-010 not yet implemented for Instagram:** og:image URLs expire, so reel thumbnails can go stale; copying the image into our own storage is a follow-up.
 
-<!-- Add new entries below this line. Next ID: D-029 -->
+### D-029: Custom reminders fire at a computed time (implements D-027)
+- **Date:** 2026-10-17
+- **Decided by:** Viraj (asked for it)
+- **Status:** Accepted
+- **Decision:** Added `remind_at timestamptz` and `reminded boolean` to `saved_items` (migration `20261017180000_add_remind_at.sql`). On save, a chosen preset is turned into a concrete time by `computeRemindAt` (`src/lib/reminders.ts`): **Tonight** = today 20:00 IST (or +1h if already past), **This weekend** = coming Saturday 10:00 IST, **Next week** = next Monday 09:00 IST. A second cron pass (`POST /api/cron/reminders` with `{type:"custom"}`, scheduled every 15 min) pushes due items once and sets `reminded=true`.
+- **Reason:** Completes the custom-reminder feature (D-020) so presets actually fire. A fixed +5:30 offset is safe because V1 is single-user in Asia/Kolkata, which has no DST (D-018); revisit if the app goes multi-timezone.
+- **Alternatives considered:** A timezone library (overkill for a fixed-offset single user); firing custom reminders only at the two daily times (wrong times, loses the point).
+- **Consequences / follow-ups:** The daily nudge now sends with `{type:"daily"}`; the scheduler template gained a `*/15` custom job. Multi-timezone support would need the user's timezone (already a column in `reminder_settings`) fed into `computeRemindAt`.
+
+<!-- Add new entries below this line. Next ID: D-030 -->

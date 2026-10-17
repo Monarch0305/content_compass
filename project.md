@@ -2,7 +2,7 @@
 
 > Save later. Actually watch instead of forgetting.
 
-- **Status:** All V1 build steps (1-5) coded. Not yet *live*: needs deploy (HTTPS + service-role key + pg_cron schedule) and the Supabase email-template edit; optional `remind_at` follow-up for custom-preset timing (D-027).
+- **Status:** All V1 features coded, including custom-reminder firing (D-029). Not yet *live*: needs deploy (HTTPS + service-role key + pg_cron schedule) and the Supabase email-template edit.
 - **Owner:** Viraj
 - **Last updated:** 2026-10-17
 - **Companion files:** `decisions.md` (why we chose things), `flow.md` (how the code runs, created once code exists)
@@ -223,6 +223,8 @@ Update `flow.md` in the same change whenever a function is added, renamed, moved
 - [ ] Another test account cannot see my items
 
 ## 13. Handoff notes (newest first)
+
+**2026-10-17 (session 7):** Implemented the custom-reminder firing follow-up (D-029, supersedes D-027). Added `remind_at` + `reminded` to `saved_items` (migration `20261017180000_add_remind_at.sql`, applied; RLS unaffected). `computeRemindAt` turns a preset into a time (Tonight 20:00 / Sat 10:00 / Mon 09:00 IST, fixed +5:30, no DST). `POST /api/links` stores `remind_at`. The cron now takes `{type}`: `daily` (unchanged nudges) and `custom` (every 15 min, sends due items once, sets `reminded`). `reminders_cron.sql` gained the `*/15` custom job. Build passes; date math verified. **V1 feature set is now fully coded.** Remaining is deploy/config only.
 
 **2026-10-17 (session 6):** Built **step 5** (D-028) — `src/lib/instagram.ts` reads public Open Graph tags (og:title/og:image/og:description) for Reels with a crawler user-agent, no login (D-009); wired into `POST /api/links` and the caption feeds the Haiku summary. Graceful fallback to the note. Build passes. **All V1 features are now coded.** Known gap: D-010 (own thumbnail copy) not yet done for Instagram, so reel thumbnails may expire — follow-up. **Remaining to go live is config/deploy only** (Vercel + env incl. SUPABASE_SERVICE_ROLE_KEY, Supabase email template `{{ .Token }}`, run `supabase/reminders_cron.sql`), plus the optional `remind_at` increment for custom-preset timing (D-027).
 

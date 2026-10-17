@@ -66,6 +66,8 @@ function AddForm() {
       summary: "The real title and summary are fetched when you save.",
       user_note: null,
       custom_reminder: null,
+      remind_at: null,
+      reminded: false,
       status: "unwatched",
       created_at: new Date().toISOString(),
       watched_at: null,

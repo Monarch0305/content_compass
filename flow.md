@@ -58,12 +58,15 @@ Flow: Enable reminders
 ```
 
 ```
-Flow: Send reminders (two daily nudges, D-018)
-1. pg_cron at 03:30 & 14:30 UTC  -> net.http_post -> POST /api/cron/reminders  (supabase/reminders_cron.sql)
-2. endpoint checks Bearer CRON_SECRET, loads VAPID + service-role client       (api/cron/reminders/route.ts)
-3. reads all unwatched items + subscriptions (service role bypasses RLS)
-4. web-push sends one notification per device; dead subs (404/410) deleted
-5. phone shows notification -> tap -> service worker focuses/opens app          (public/sw.js)
+Flow: Send reminders (api/cron/reminders/route.ts)
+Daily nudge  (type "daily", pg_cron 03:30 & 14:30 UTC = 09:00/20:00 IST, D-018):
+  reads all unwatched items + subs -> one "N videos waiting" push per device
+Custom preset (type "custom", pg_cron every 15 min, D-029):
+  reads unwatched items where remind_at <= now and reminded = false
+  -> one push per device -> marks reminded = true (fires once)
+Both: Bearer CRON_SECRET + VAPID + service-role client; dead subs (404/410) pruned.
+Tap -> service worker focuses/opens the app (public/sw.js).
+remind_at is set on save by computeRemindAt() (lib/reminders.ts).
 ```
 
 ```
@@ -136,7 +139,7 @@ Flow: Sign out               -> supabase.auth.signOut() -> /login (components/Si
 | `src/lib/youtube.ts` | YouTube detail-fetching |
 | `src/lib/instagram.ts` | Instagram Reel details via public OG tags (D-009) |
 | `src/lib/summary.ts` | Claude Haiku summary + fallback (uses caption/note) |
-| `src/lib/reminders.ts` | Reminder presets + label |
+| `src/lib/reminders.ts` | Reminder presets, label, and `computeRemindAt` (D-029) |
 | `src/lib/store.tsx` | Browser data layer over `/api/links` |
 | `src/lib/supabase/client.ts` | Supabase browser client |
 | `src/lib/supabase/server.ts` | Supabase server client (cookies) |
@@ -147,4 +150,4 @@ Flow: Sign out               -> supabase.auth.signOut() -> /login (components/Si
 
 ---
 
-**Last updated:** 2026-10-17 | **Updated by:** Claude | **Reflects:** build step 5 — all V1 features coded (incl. Instagram Reels via public OG tags). Remaining before it's fully live: deploy (HTTPS + service-role key + pg_cron), the Supabase email-template edit, and the optional `remind_at` follow-up (D-027).
+**Last updated:** 2026-10-17 | **Updated by:** Claude | **Reflects:** all V1 features coded, incl. Instagram Reels (OG tags) and custom-reminder firing (D-029, `remind_at`). Remaining before fully live: deploy (HTTPS + service-role key + pg_cron) and the Supabase email-template edit.
