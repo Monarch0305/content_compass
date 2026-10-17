@@ -228,4 +228,22 @@ Every meaningful decision for Content Compass goes here, **with the reason**. Th
 - **Reason:** D-016 wants a code entered every time, not a magic link. The template change is what makes the emailed value a visible code.
 - **Consequences / follow-ups:** Documented in the test checklist. Built-in Supabase email is rate-limited (fine for personal testing); a real email provider (e.g. Resend) can be added before going public.
 
-<!-- Add new entries below this line. Next ID: D-024 -->
+### D-024: YouTube details via oEmbed first, Data API only for duration
+- **Date:** 2026-10-17
+- **Decided by:** Claude (proposed)
+- **Status:** Accepted
+- **Decision:** Fetch YouTube/Shorts details in `src/lib/youtube.ts` from **oEmbed** (title, channel, thumbnail) — which needs **no API key** — and use the **YouTube Data API** only to add the video's duration, and only when `YOUTUBE_API_KEY` is set. Everything degrades gracefully: a failed call falls back to a placeholder instead of erroring.
+- **Reason:** oEmbed gives the most valuable fields with zero setup, so the app is useful before Viraj has any key. The Data API (which needs a Google Cloud key and has quotas) is reserved for the one thing oEmbed lacks. Graceful fallback means saving a link never breaks on a network hiccup.
+- **Alternatives considered:** Data API for everything (rejected: requires a key just to save anything, and burns quota); scraping the watch page (rejected: fragile, against terms).
+- **Consequences / follow-ups:** `YOUTUBE_API_KEY` is optional. Instagram Reels still use placeholders + the note until step 5 (per D-009).
+
+### D-025: AI summary uses Claude Haiku with a no-key fallback
+- **Date:** 2026-10-17
+- **Decided by:** Claude (proposed; model per D-008)
+- **Status:** Accepted
+- **Decision:** `src/lib/summary.ts` calls **Claude Haiku** (`claude-haiku-5-5`) for a 2-3 line summary when `ANTHROPIC_API_KEY` is set. With no key, or if the call fails, it falls back to the user's note (else the title) so the saved item is still recognisable. Reels have no caption (D-009), so the note carries the context — the same path handles that.
+- **Reason:** Haiku is cheap and fast enough for short summaries (D-008) and fits the ~$2/mo cap (D-018). The fallback keeps the app fully usable before a key is added and resilient if the API is briefly unavailable.
+- **Alternatives considered:** A larger model (rejected: unnecessary cost for 2-3 lines); blocking saves until a key exists (rejected: breaks the core loop).
+- **Consequences / follow-ups:** Pinned model `claude-haiku-5-5`, SDK `@anthropic-ai/sdk@0.70.1`. Summary is generated synchronously on save (fine at personal volume); revisit if saving feels slow.
+
+<!-- Add new entries below this line. Next ID: D-026 -->

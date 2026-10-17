@@ -13,11 +13,9 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import {
-  detectPlatform,
-  extractYouTubeId,
-  platformLabel,
-} from "@/lib/platform";
+import { detectPlatform, extractYouTubeId, platformLabel } from "@/lib/platform";
+import { fetchYouTubeDetails } from "@/lib/youtube";
+import { summarise } from "@/lib/summary";
 
 export async function GET() {
   const supabase = await createClient();
@@ -63,10 +61,29 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const ytId = extractYouTubeId(url);
-  const thumbnail_url = ytId
-    ? `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`
-    : "";
+  // Fetch real details for YouTube/Shorts. Reels have no open API (D-009), so
+  // they use placeholders and the summary leans on the user's note.
+  const note: string | null = body?.user_note ?? null;
+  let title: string;
+  let channel = "";
+  let duration: string | null = null;
+  let thumbnail_url: string;
+
+  if (platform === "youtube" || platform === "short") {
+    const details = await fetchYouTubeDetails(url);
+    title = details.title;
+    channel = details.channel;
+    duration = details.duration;
+    thumbnail_url = details.thumbnail_url;
+  } else {
+    // Reel: real detail-fetching comes in step 5.
+    const ytId = extractYouTubeId(url);
+    title = `Saved ${platformLabel(platform)}`;
+    thumbnail_url = ytId ? `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg` : "";
+  }
+
+  // AI summary (Claude Haiku when a key is set, else a note/title fallback).
+  const summary = await summarise({ platform, title, channel, note });
 
   const { data, error } = await supabase
     .from("saved_items")
@@ -74,13 +91,12 @@ export async function POST(request: NextRequest) {
       user_id: user.id,
       url,
       platform,
-      title: `Saved ${platformLabel(platform)} link`,
-      channel: "",
-      duration: null,
+      title,
+      channel,
+      duration,
       thumbnail_url,
-      summary:
-        "A summary will appear here once detail-fetching and the AI summary are added (step 3).",
-      user_note: body?.user_note ?? null,
+      summary,
+      user_note: note,
       custom_reminder: body?.custom_reminder ?? null,
     })
     .select()

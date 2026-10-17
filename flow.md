@@ -1,10 +1,12 @@
 # flow.md: how the code runs
 
-> **Status: reflects build step 2 (real data + email-OTP login).**
-> YouTube/Instagram detail-fetching and the AI summary are still placeholders
-> (step 3); PWA share target and reminders are not built yet (step 4). Those
-> sections say so. Update this file in the same change whenever a function is
-> added, renamed, moved, or its calls change. A stale `flow.md` is a bug.
+> **Status: reflects build step 3 (real YouTube details + AI summary).**
+> YouTube details come from oEmbed (keyless) + the Data API (duration, if a key
+> is set); the summary uses Claude Haiku when `ANTHROPIC_API_KEY` is set, else a
+> note/title fallback. Instagram Reel detail-fetching is still placeholder
+> (step 5); PWA share target and reminders are not built yet (step 4). Update
+> this file in the same change whenever a function is added, renamed, moved, or
+> its calls change. A stale `flow.md` is a bug.
 
 ## 1. Entry points
 
@@ -50,9 +52,11 @@ Flow: Save a link
 1. /add: paste URL, Preview       -> detectPlatform(), extractYouTubeId() (src/lib/platform.ts)
 2. add optional note + reminder preset, tap Save
 3. store.addItem(input)           -> POST /api/links                  (src/lib/store.tsx)
-4. route: detect platform, insert -> supabase ... .insert(...)        (src/app/api/links/route.ts)
+4. route: detect platform         -> fetchYouTubeDetails(url)         (src/lib/youtube.ts)  [YouTube/Shorts]
+5. route: write summary           -> summarise({...})                 (src/lib/summary.ts)
+6. route: insert                  -> supabase ... .insert(...)        (src/app/api/links/route.ts)
    (unique (user_id,url) -> 409 "already saved")
-5. created row returned, prepended to the local list -> back to dashboard
+7. created row returned, prepended to the local list -> back to dashboard
 ```
 
 ```
@@ -73,7 +77,9 @@ Flow: Sign out -> SignOutButton -> supabase.auth.signOut() -> /login  (src/compo
 - `DashboardPage` (`page.tsx`) -> `useStore()`; renders `VideoCard`, `SignOutButton`, `EmptyState`
 - `AddPage` (`add/page.tsx`) -> `useStore().addItem`, `detectPlatform`, `extractYouTubeId`, `platformLabel`, `REMINDER_PRESETS`
 - `VideoDetailPage` (`video/[id]/page.tsx`) -> `useStore()` (`getItem`, `markWatched`, `deleteItem`, `loading`), `reminderLabel`
-- `GET/POST /api/links` (`api/links/route.ts`) -> `createClient()` (server) -> `auth.getUser()`, `from("saved_items")`
+- `GET/POST /api/links` (`api/links/route.ts`) -> `createClient()` (server), `auth.getUser()`, `from("saved_items")`; POST also -> `fetchYouTubeDetails()`, `summarise()`
+- `fetchYouTubeDetails` (`youtube.ts`) -> YouTube oEmbed + (if key) Data API
+- `summarise` (`summary.ts`) -> Anthropic `messages.create` (Claude Haiku) or fallback
 - `PATCH/DELETE /api/links/[id]` (`api/links/[id]/route.ts`) -> `createClient()` (server) -> `auth.getUser()`, `from("saved_items")`
 
 ## 4. Data in and out
@@ -97,8 +103,10 @@ belt-and-braces second check.
 |---|---|---|
 | Supabase Auth | `login/page.tsx`, `middleware.ts`, both API routes, `SignOutButton` | email OTP, session cookies |
 | Supabase Postgres | both API routes (server client) | `saved_items` CRUD under RLS |
-| YouTube / Instagram | — | **Not built yet** (step 3) |
-| LLM (Claude Haiku) | — | **Not built yet** (step 3) |
+| YouTube oEmbed | `src/lib/youtube.ts` (POST /api/links) | keyless; title, channel, thumbnail |
+| YouTube Data API | `src/lib/youtube.ts` (POST /api/links) | duration only; needs `YOUTUBE_API_KEY` |
+| LLM (Claude Haiku) | `src/lib/summary.ts` (POST /api/links) | summary; needs `ANTHROPIC_API_KEY`, else fallback |
+| Instagram | — | **Not built yet** (step 5) |
 | Web Push | — | **Not built yet** (step 4) |
 
 ## 6. File map
@@ -118,6 +126,8 @@ belt-and-braces second check.
 | `src/components/SignOutButton.tsx` | Signs out, returns to `/login` |
 | `src/lib/types.ts` | `SavedItem`, `Platform`, `ItemStatus`, `ReminderPreset` |
 | `src/lib/platform.ts` | URL utilities: detect platform, extract YouTube id, label |
+| `src/lib/youtube.ts` | YouTube detail-fetching: oEmbed + optional Data API duration |
+| `src/lib/summary.ts` | Claude Haiku summary with note/title fallback |
 | `src/lib/reminders.ts` | Reminder presets + label (D-020) |
 | `src/lib/store.tsx` | Browser data layer: loads from and writes to `/api/links` |
 | `src/lib/supabase/client.ts` | Supabase browser client |
@@ -127,4 +137,4 @@ belt-and-braces second check.
 
 ---
 
-**Last updated:** 2026-10-17 | **Updated by:** Claude | **Reflects:** build step 2 (Supabase data + email-OTP login, RLS); detail-fetching/AI summary still placeholder (step 3); pre-git-init
+**Last updated:** 2026-10-17 | **Updated by:** Claude | **Reflects:** build step 3 (real YouTube details via oEmbed + optional Data API; Claude Haiku summary with fallback). Instagram detail-fetching still placeholder (step 5).

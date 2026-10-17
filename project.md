@@ -2,7 +2,7 @@
 
 > Save later. Actually watch instead of forgetting.
 
-- **Status:** Build steps 1-2 done (three screens; real Supabase data + email-OTP login with RLS). Detail-fetching + AI summary (step 3) and PWA/reminders (step 4) not yet built.
+- **Status:** Build steps 1-3 done (three screens; real Supabase data + email-OTP login with RLS; real YouTube details + Claude Haiku summaries). PWA/reminders (step 4) and Instagram (step 5) not yet built.
 - **Owner:** Viraj
 - **Last updated:** 2026-10-17
 - **Companion files:** `decisions.md` (why we chose things), `flow.md` (how the code runs, created once code exists)
@@ -223,6 +223,8 @@ Update `flow.md` in the same change whenever a function is added, renamed, moved
 - [ ] Another test account cannot see my items
 
 ## 13. Handoff notes (newest first)
+
+**2026-10-17 (session 4):** Built **step 3**. Added `src/lib/youtube.ts` (real title/channel/thumbnail via keyless oEmbed; duration via YouTube Data API only if `YOUTUBE_API_KEY` set; D-024) and `src/lib/summary.ts` (Claude Haiku `claude-haiku-5-5` summary when `ANTHROPIC_API_KEY` set, else note/title fallback; D-025), both wired into `POST /api/links` to replace the placeholders. Installed `@anthropic-ai/sdk@0.70.1`. Build passes; verified oEmbed returns real data. Keys are optional — the app works without them and improves when added; both are in `.env.local` (empty) and documented in `.env.local.example`. **Next step:** step 4 — PWA (manifest + service worker), Android share-target save, and Web Push reminders (two daily + the custom presets). Needs VAPID keys (generated, no account) and a scheduler (Supabase `pg_cron` per D-008/D-018).
 
 **2026-10-17 (session 3):** Built **step 2**. Created a dedicated Supabase project `content-compass` and applied the schema (saved_items / push_subscriptions / reminder_settings, all with RLS; security advisor clean) via a migration file (D-022). Added email-OTP login (D-016/D-023), auth middleware protecting all pages, and `/api/links` routes that replace the in-memory store with real Supabase reads/writes under the user's session. Deleted fake-data.ts. `npm run build` passes; runtime smoke test confirms signed-out `/`→`/login` redirect, `/api/links`→401, `/login`→200. **Action needed from Viraj before the login works end to end:** (1) in the Supabase dashboard, edit the Auth "Magic Link" email template to show the code `{{ .Token }}` (D-023); (2) the app needs `.env.local` (already present in this session; see `.env.local.example`). **Still not pushed to GitHub** — code is only in this ephemeral session. **Next step:** step 3 — real YouTube details (oEmbed + Data API) and the Claude Haiku summary in `POST /api/links`. Needs an Anthropic API key and a YouTube Data API key.
 
